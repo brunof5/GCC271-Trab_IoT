@@ -41,11 +41,11 @@
 // ===========================
 // WiFi credentials
 // ===========================
-const char *ssid     = "ssid";
-const char *password = "password";
+const char *ssid     = "TeclaNet_Marcus";
+const char *password = "isabela1707";
 
 // Endpoint Flask
-const char* api_host = "api_host";
+const char* api_host = "192.168.3.27";
 const int api_port = 5000;
 const char* api_route = "/upload";
 
@@ -53,17 +53,20 @@ WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 // --- Configurações do Broker MQTT ---
-const char* mqtt_broker = "mqtt_broker";
+const char* mqtt_broker = "01847d1558da4697a5180f12ed9f504a.s1.eu.hivemq.cloud";
 const int mqtt_port = 8883;// Porta padrao MQTT sem segurança
 const char* mqtt_client_id = "ESP32cam1"; // ID único para o seu cliente MQTT
 const char* mqtt_topic = "cameras/cam1";  // Tópico da câmera
-const char* mqtt_user = "mqtt_user"; // Usuário MQTT criado no Broker
-const char* mqtt_pass = "mqtt_pass";
+const char* mqtt_topic_listener = "comandos/init";  // Tópico da câmera para inicia-la
+const char* mqtt_user = "EspServer"; // Usuário MQTT criado no Broker
+const char* mqtt_pass = "Esp123456";
+
+//chave email: ekqw aeic reax hrhi
 
 // --- Outras configurações ---
 const int camId = 1;
 unsigned long ms = 0;
-const unsigned long interval = 60000;
+const unsigned long interval = 30000;
 unsigned long seq = 0;
 
 // --- Configurações NTP ---
@@ -72,6 +75,43 @@ const long gmtOffset_sec = -3 * 60 * 60;  // Offset de GMT-3
 
 void startCameraServer();
 void setupLedFlash(int pin);
+
+// --- Função para publicar o IP no broker MQTT ---
+void publishIP() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  StaticJsonDocument<100> doc;
+  doc["seq"] = seq++;
+  doc["ip"] = WiFi.localIP().toString();
+
+  char payload[100];
+  serializeJson(doc, payload);
+  client.publish(mqtt_topic, payload);
+}
+
+void callback(char* topic, byte* payload, unsigned int length) {
+  String msg;
+  for (int i = 0; i < length; i++) {
+    msg += (char)payload[i];
+  }
+  Serial.print("Payload recebido: ");
+  Serial.println(msg);
+
+  StaticJsonDocument<100> doc;
+  DeserializationError error = deserializeJson(doc, msg);
+  if (error) {
+    Serial.print("Erro ao fazer parsing do JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (doc.containsKey("discovery") && doc["discovery"] == "cameras") {
+    publishIP();
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -178,12 +218,14 @@ void setup() {
   configTime(gmtOffset_sec, 0, ntpServer);
 
   espClient.setInsecure();
+
   // Configurar o cliente MQTT
   client.setServer(mqtt_broker, mqtt_port);
+  client.setCallback(callback);  
+  client.subscribe("comandos/init");
+  Serial.println("Inscrito em comandos/init");
 
   startCameraServer();
-
-  publishIP();
 
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
@@ -196,6 +238,8 @@ void reconnect() {
     Serial.print("Tentando conexão MQTT...");
     if (client.connect(mqtt_client_id, mqtt_user, mqtt_pass)) {
       Serial.println("conectado!");
+      client.subscribe("comandos/init");
+      Serial.println("Inscrito em comandos/init");
     } else {
       Serial.print("falhou, rc=");
       Serial.print(client.state());
@@ -203,22 +247,6 @@ void reconnect() {
       delay(5000);
     }
   }
-}
-
-// --- Função para publicar o IP no broker MQTT ---
-void publishIP() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-
-  StaticJsonDocument<100> doc;
-  doc["seq"] = seq++;
-  doc["ip"] = WiFi.localIP().toString();
-
-  char payload[100];
-  serializeJson(doc, payload);
-  client.publish(mqtt_topic, payload);
 }
 
 // --- Função para enviar uma imagem ao servidor Flask ---
@@ -295,9 +323,8 @@ void sendImage() {
 }
 
 void loop() {
-  if (millis() - ms > interval) {
-    ms = millis();
-    publishIP();
-    sendImage();
+  if (!client.connected()) {
+    reconnect();
   }
+  client.loop();
 }

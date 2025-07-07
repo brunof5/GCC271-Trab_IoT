@@ -5,18 +5,22 @@
 #include <ArduinoJson.h> // Para enviar dados em formato JSON
 
 //Informacoes da rede WiFi
-const char* ssid     = "ssid";
-const char* password = "password";
+const char* ssid     = "TeclaNet_Marcus";
+const char* password = "isabela1707";
 
 // --- Configurações do Broker MQTT ---
-const char* mqtt_broker = "mqtt_broker";
+const char* mqtt_broker = "01847d1558da4697a5180f12ed9f504a.s1.eu.hivemq.cloud";
 const int mqtt_port = 8883;// Porta padrao MQTT sem segurança
 const char* mqtt_client_id = "ESP32Server"; // ID único para o seu cliente MQTT
-const char* mqtt_user = "mqtt_user"; // Usuário MQTT criado no Broker
-const char* mqtt_pass = "mqtt_pass";
+const char* mqtt_user = "EspServer"; // Usuário MQTT criado no Broker
+const char* mqtt_pass = "Esp123456";
+const char* email = "cleberreidofut@gmail.com";
+
+String horario_inicio = "00:00";
+String horario_fim = "00:00";
 
 // --- Tópicos MQTT ---
-const char* topic_comando = "comandos/teste";
+const char* topic_comando = "comandos/init";
 
 // --- Endereços das Câmeras ---
 String ipCam1 = "";
@@ -71,201 +75,78 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 // --- Função para envio manual de mensagem MQTT via web ---
-void handleEnviar() {
-  String payload = "{\"mensagem\":\"Comando manual enviado via web\"}";
+void handleRequisitarIPs() {
+  String payload = "{\"discovery\":\"cameras\"}";
   client.publish(topic_comando, payload.c_str());
 
-  Serial.println("Mensagem enviada via WebServer!");
+  Serial.println("Requisição enviada via WebServer!");
 
-  server.send(200, "text/html", "<h1>Mensagem enviada com sucesso!</h1>");
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSalvarHorario() {
+  if (server.hasArg("inicio")) {
+    horario_inicio = server.arg("inicio");
+  }
+  if (server.hasArg("fim")) {
+    horario_fim = server.arg("fim");
+  }
+
+  Serial.println("Horário configurado:");
+  Serial.println("Início: " + horario_inicio);
+  Serial.println("Fim: " + horario_fim);
+
+  server.send(200, "text/html", "<html><body><h1>Horário salvo com sucesso!</h1><a href='/'>Voltar</a></body></html>");
 }
 
 // --- Página inicial da web ---
 void handleRoot() {
-  String html = R"rawliteral(
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8">
-    <title>Monitoramento IoT - ESP32</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background-color: #f5f5f5;
-        margin: 0;
-        padding: 0;
-      }
-      header {
-        background-color: #007bff;
-        color: white;
-        padding: 20px;
-        text-align: center;
-      }
-      main {
-        padding: 20px;
-        max-width: 900px;
-        margin: auto;
-      }
-      section {
-        background-color: white;
-        padding: 20px;
-        margin-bottom: 20px;
-        border-radius: 8px;
-        box-shadow: 0 0 8px rgba(0,0,0,0.1);
-      }
-      h2 { color: #333; }
-      button {
-        padding: 10px 20px;
-        background-color: #28a745;
-        color: white;
-        border: none;
-        border-radius: 5px;
-        font-size: 16px;
-        cursor: pointer;
-      }
-      button:hover { background-color: #218838; }
-      .camera-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-      }
-      .camera {
-        flex: 1 1 45%;
-        border: 1px solid #ccc;
-        padding: 10px;
-        border-radius: 6px;
-        text-align: center;
-      }
-      .camera iframe {
-        width: 100%;
-        height: 200px;
-        border: none;
-      }
-      .images-gallery {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      .images-gallery img {
-        width: 150px;
-        height: auto;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-      }
-      .hidden { display: none; }
-    </style>
-  </head>
-  <body>
-    <header>
-      <h1>Monitoramento de Câmeras - ESP32 IoT</h1>
-    </header>
+  String html = "<html><head><meta charset=\"UTF-8\"><title>Detecção de movimentação suspeita</title></head><body>";
+  html += "<h1>Detecção SUS</h1>";
 
-    <main>
-      <section>
-        <h2>1. Dispositivos</h2>
-        <button onclick="descobrirDispositivos()">Descobrir Dispositivos</button>
-      </section>
+  html += "<button onclick=\"requisitarIPs()\">Descobrir dispositivos</button>";
 
-      <section id="sec-cameras" class="hidden">
-        <h2>2. Visualização das Câmeras</h2>
-        <div id="camera-container" class="camera-container"></div>
-      </section>
+  html += "<script>";
+  html += "function requisitarIPs() {";
+  html += "  fetch('/requisitar_ips')";
+  html += "    .then(response => { if (response.ok) { setTimeout(() => location.reload(), 500); } else { alert('Erro ao requisitar IPs.'); } })";
+  html += "    .catch(error => { alert('Erro de rede: ' + error); });";
+  html += "}";
+  html += "</script>";
 
-      <section>
-        <h2>3. Agendar Horário de Vigilância</h2>
-        <form onsubmit="enviarHorario(event)">
-          <input type="time" id="horario" required>
-          <button type="submit">Confirmar</button>
-        </form>
-      </section>
+  html += "<h1>Configurar Intervalo de Captura</h1>";
+  html += "<form action=\"/salvar_horario\" method=\"POST\">";
+  html += "Início (HH:MM): <input type=\"time\" name=\"inicio\"><br><br>";
+  html += "Fim (HH:MM): <input type=\"time\" name=\"fim\"><br><br>";
+  html += "<input type=\"submit\" value=\"Salvar\">";
+  html += "</form>";
 
-      <section>
-        <h2>4. Imagens Suspeitas Detectadas</h2>
-        <form onsubmit="carregarImagens(event)">
-          <input type="date" id="data-inicio">
-          <input type="date" id="data-fim">
-          <button type="submit">Filtrar</button>
-        </form>
-        <div id="gallery" class="images-gallery"></div>
-      </section>
-    </main>
+  html += "<h2>Câmeras Detectadas:</h2><ul>";
 
-    <script>
-      function descobrirDispositivos() {
-        fetch('/enviar')
-          .then(() => {
-            const sec = document.getElementById('sec-cameras');
-            const container = document.getElementById('camera-container');
-            sec.classList.remove('hidden');
+  if (ipCam1 != "") {
+    html += "<h3>Câmera 1</h3>";
+    html += "<img src='http://" + ipCam1 + ":81/stream' width='480' height='320' />";
+    html += "<li><a href='http://" + ipCam1 + "'>link</a></li>";
+  } else {
+    html += "<li>Câmera 1: Aguardando conexão...</li>";
+  }
 
-            container.innerHTML = "";
+  if (ipCam2 != "") {
+    html += "<h3>Câmera 2</h3>";
+    html += "<img src='http://" + ipCam2 + ":81/stream' width='480' height='320' />";
+    html += "<li><a href='http://" + ipCam2 + "'>link</a></li>";
+  } else {
+    html += "<li>Câmera 2: Aguardando conexão...</li>";
+  }
 
-            const cams = [
-              { id: 1, ip: "$CAM1" },
-              { id: 2, ip: "$CAM2" }
-            ];
+  html += "<form action=\"http://192.168.3.27:5000/galeria\">";
+  html += "<button type=\"submit\">Ver Galeria</button>";
+  html += "</form>";
 
-            cams.forEach(cam => {
-              if (!cam.ip) return;
-              container.innerHTML += `
-                <div class="camera">
-                  <h3>Câmera ${cam.id}</h3>
-                  <iframe src="http://${cam.ip}:81/stream"></iframe>
-                  <p><a href="http://${cam.ip}" target="_blank">Abrir Configuração</a></p>
-                </div>`;
-            });
-          });
-      }
-
-      function enviarHorario(e) {
-        e.preventDefault();
-        const horario = document.getElementById("horario").value;
-        alert("Horário " + horario + " enviado (simulado).");
-        // fetch(`/vig?horario=${horario}`); // se quiser enviar via rota
-      }
-
-      function carregarImagens(e) {
-        const inicio = document.getElementById("data-inicio").value;
-        const fim = document.getElementById("data-fim").value;
-
-        const galeria = document.getElementById("gallery");
-        galeria.innerHTML = "";
-
-        //por IP do flask auqi quando for implementado
-        const servidor = "http...";
-
-        fetch(`${servidor}/imagens?inicio=${inicio}&fim=${fim}`)
-          .then(res => res.json())
-          .then(data => {
-            if (!data.imagens || data.imagens.length === 0) {
-              galeria.innerHTML = "<p>Nenhuma imagem encontrada no período.</p>";
-              return;
-            }
-
-            data.imagens.forEach(url => {
-              const img = document.createElement("img");
-              img.src = url;
-              img.alt = "Imagem suspeita";
-              galeria.appendChild(img);
-            });
-          })
-          .catch(err => {
-            galeria.innerHTML = "<p>Erro ao carregar imagens.</p>";
-            console.error(err);
-        });
-      }
-    </script>
-  </body>
-  </html>
-  )rawliteral";
-
-  // Substituir variáveis com IPs das câmeras recebidas via MQTT
-  html.replace("$CAM1", ipCam1);
-  html.replace("$CAM2", ipCam2);
+  html += "</ul></body></html>";
 
   server.send(200, "text/html", html);
 }
-
 
 // --- Configuração inicial ---
 void setup() {
@@ -299,7 +180,8 @@ void setup() {
 
   // Inicia o servidor web
   server.on("/", handleRoot);
-  server.on("/enviar", handleEnviar);
+  server.on("/requisitar_ips", HTTP_GET, handleRequisitarIPs);
+  server.on("/salvar_horario", HTTP_POST, handleSalvarHorario);
   server.begin();
   Serial.println("Servidor web iniciado.");
 }
