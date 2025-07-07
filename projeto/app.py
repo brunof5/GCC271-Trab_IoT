@@ -45,7 +45,7 @@ def upload():
     imagem.save(path)
 
     imagens = sorted(
-        [f for f in os.listdir(IMAGEM_DIR) if f.endswith((".jpg", ".png"))],
+        [f for f in os.listdir(IMAGEM_DIR) if f.endswith((camId + ".jpg", camId +".png"))],
         reverse=True
     )
     img1 = os.path.join(IMAGEM_DIR, imagens[1])
@@ -53,8 +53,9 @@ def upload():
 
     houve_movimento, score = detectar_movimento(img1, img2)
 
-    if houve_movimento and score > 4000000:
-        path = os.path.join(SUS_IMAGEM_DIR, filename)
+    print(houve_movimento)
+    if houve_movimento:
+        path = os.path.join("imagens_suspeitas", filename)
         imagem.save(path)   
 
     # Salva no banco
@@ -176,7 +177,7 @@ def galeriaSUS():
     """
     return render_template_string(html, imagens=imagens)
 
-def detectar_movimento(imagem1_path, imagem2_path, threshold=3000000):
+def detectar_movimento(imagem1_path, imagem2_path, threshold=3840): # 76800 pixels no total -> 3840 = 5%
     img1 = cv2.imread(imagem1_path)
     img2 = cv2.imread(imagem2_path)
 

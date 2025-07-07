@@ -5,8 +5,8 @@
 #include <ArduinoJson.h> // Para enviar dados em formato JSON
 
 //Informacoes da rede WiFi
-const char* ssid     = "TeclaNet_Marcus";
-const char* password = "isabela1707";
+const char* ssid     = "LAN_VGA";
+const char* password = "Tr252870172";
 
 // --- Configurações do Broker MQTT ---
 const char* mqtt_broker = "01847d1558da4697a5180f12ed9f504a.s1.eu.hivemq.cloud";
@@ -14,13 +14,15 @@ const int mqtt_port = 8883;// Porta padrao MQTT sem segurança
 const char* mqtt_client_id = "ESP32Server"; // ID único para o seu cliente MQTT
 const char* mqtt_user = "EspServer"; // Usuário MQTT criado no Broker
 const char* mqtt_pass = "Esp123456";
-const char* email = "cleberreidofut@gmail.com";
 
+// --- Configurações Gerais ---
 String horario_inicio = "00:00";
 String horario_fim = "00:00";
+String ipFlask = "192.168.2.107";
 
 // --- Tópicos MQTT ---
 const char* topic_comando = "comandos/init";
+const char* topic_horario = "comandos/horario";
 
 // --- Endereços das Câmeras ---
 String ipCam1 = "";
@@ -96,15 +98,33 @@ void handleSalvarHorario() {
   Serial.println("Início: " + horario_inicio);
   Serial.println("Fim: " + horario_fim);
 
-  server.send(200, "text/html", "<html><body><h1>Horário salvo com sucesso!</h1><a href='/'>Voltar</a></body></html>");
+  String payload = "Ini: " + horario_inicio + " Fim: " + horario_fim;
+  client.publish(topic_horario, payload.c_str());
+
+  server.send(200, "text/html", "<html><body><h1>Horario salvo com sucesso!</h1><a href='/'>Voltar</a></body></html>");
 }
 
 // --- Página inicial da web ---
 void handleRoot() {
-  String html = "<html><head><meta charset=\"UTF-8\"><title>Detecção de movimentação suspeita</title></head><body>";
+  String html = "<html><head><meta charset=\"UTF-8\"><title>Detecção de movimentação suspeita</title>";
+  html += "<style>";
+  html += "body { font-family: Arial, sans-serif; background-color: #f8f8f8; color: #333; padding: 20px; }";
+  html += "h1, h2, h3 { color: #222; }";
+  html += "form, button { margin-top: 10px; margin-bottom: 20px; }";
+  html += "input[type='time'], input[type='submit'], button { padding: 10px; border: none; border-radius: 5px; font-size: 16px; }";
+  html += "input[type='submit'], button { background-color: #4CAF50; color: white; cursor: pointer; }";
+  html += "input[type='submit']:hover, button:hover { background-color: #45a049; }";
+  html += "img { border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); margin: 10px 0; }";
+  html += "ul { list-style-type: none; padding: 0; }";
+  html += "li { margin-bottom: 10px; }";
+  html += ".cameras { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 20px; }";
+  html += ".camera-box { background: #ffffff; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: fit-content; }";
+  html += ".camera-box h3 { margin-top: 0; }";
+  html += "</style></head><body>";
+
   html += "<h1>Detecção SUS</h1>";
 
-  html += "<button onclick=\"requisitarIPs()\">Descobrir dispositivos</button>";
+  html += "<button onclick=\"requisitarIPs()\">🔍 Descobrir dispositivos</button>";
 
   html += "<script>";
   html += "function requisitarIPs() {";
@@ -114,36 +134,70 @@ void handleRoot() {
   html += "}";
   html += "</script>";
 
+  html += "<script>";
+  html += "function salvarHorario(event) {";
+  html += "  event.preventDefault();";  // Impede o recarregamento da página
+  html += "  const inicio = document.getElementById('inicio').value;";
+  html += "  const fim = document.getElementById('fim').value;";
+  html += "  const dados = new URLSearchParams();";
+  html += "  dados.append('inicio', inicio);";
+  html += "  dados.append('fim', fim);";
+  html += "  fetch('/salvar_horario', {";
+  html += "    method: 'POST',";
+  html += "    body: dados,";
+  html += "    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }";
+  html += "  })";
+  html += "  .then(response => response.ok ? 'Horário salvo com sucesso!' : 'Erro ao salvar horário.')";
+  html += "  .then(msg => document.getElementById('mensagem').innerText = msg)";
+  html += "  .catch(err => document.getElementById('mensagem').innerText = 'Erro de rede: ' + err);";
+  html += "}";
+  html += "</script>";
+
   html += "<h1>Configurar Intervalo de Captura</h1>";
-  html += "<form action=\"/salvar_horario\" method=\"POST\">";
-  html += "Início (HH:MM): <input type=\"time\" name=\"inicio\"><br><br>";
-  html += "Fim (HH:MM): <input type=\"time\" name=\"fim\"><br><br>";
+  html += "<form onsubmit=\"salvarHorario(event)\">";
+  html += "Início (HH:MM): <input type=\"time\" id=\"inicio\" value=\"" + horario_inicio + "\"><br><br>";
+  html += "Fim (HH:MM): <input type=\"time\" id=\"fim\" value=\"" + horario_fim + "\"><br><br>";
   html += "<input type=\"submit\" value=\"Salvar\">";
   html += "</form>";
+  html += "<p id=\"mensagem\"></p>";
 
   html += "<h2>Câmeras Detectadas:</h2><ul>";
 
+  html += "<div class='cameras'>";
+
   if (ipCam1 != "") {
+    html += "<div class='camera-box'>";
     html += "<h3>Câmera 1</h3>";
     html += "<img src='http://" + ipCam1 + ":81/stream' width='480' height='320' />";
-    html += "<li><a href='http://" + ipCam1 + "'>link</a></li>";
+    html += "<p><a href='http://" + ipCam1 + "'>Acessar Câmera 1</a></p>";
+    html += "</div>";
   } else {
-    html += "<li>Câmera 1: Aguardando conexão...</li>";
+    html += "<div class='camera-box'><h3>Câmera 1</h3><p>Aguardando conexão...</p></div>";
   }
 
   if (ipCam2 != "") {
+    html += "<div class='camera-box'>";
     html += "<h3>Câmera 2</h3>";
     html += "<img src='http://" + ipCam2 + ":81/stream' width='480' height='320' />";
-    html += "<li><a href='http://" + ipCam2 + "'>link</a></li>";
+    html += "<p><a href='http://" + ipCam2 + "'>Acessar Câmera 2</a></p>";
+    html += "</div>";
   } else {
-    html += "<li>Câmera 2: Aguardando conexão...</li>";
+    html += "<div class='camera-box'><h3>Câmera 2</h3><p>Aguardando conexão...</p></div>";
   }
 
-  html += "<form action=\"http://192.168.3.27:5000/galeria\">";
-  html += "<button type=\"submit\">Ver Galeria</button>";
+  html += "</div>";
+
+  html += "</ul>";
+
+  html += "<form action=\"http://" + ipFlask + ":5000/galeria\">";
+  html += "<button type=\"submit\">🖼️ Ver Galeria</button>";
   html += "</form>";
 
-  html += "</ul></body></html>";
+  html += "<form action=\"http://" + ipFlask + ":5000/galeria_suspeitas\">";
+  html += "<button type=\"submit\">🚨 Ver Fotos Suspeitas</button>";
+  html += "</form>";
+
+  html += "</body></html>";
 
   server.send(200, "text/html", html);
 }
