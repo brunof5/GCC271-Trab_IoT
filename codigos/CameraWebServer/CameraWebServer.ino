@@ -41,11 +41,11 @@
 // ===========================
 // WiFi credentials
 // ===========================
-const char *ssid     = "TeclaNet_Marcus";
-const char *password = "isabela1707";
+const char *ssid     = "LAN_VGA";
+const char *password = "Tr252870172";
 
 // Endpoint Flask
-const char* api_host = "192.168.3.27";
+const char* api_host = "192.168.2.107";
 const int api_port = 5000;
 const char* api_route = "/upload";
 
@@ -58,16 +58,17 @@ const int mqtt_port = 8883;// Porta padrao MQTT sem segurança
 const char* mqtt_client_id = "ESP32cam1"; // ID único para o seu cliente MQTT
 const char* mqtt_topic = "cameras/cam1";  // Tópico da câmera
 const char* mqtt_topic_listener = "comandos/init";  // Tópico da câmera para inicia-la
+String mqtt_topic_listener_horario = "comandos/horario";  // Tópico para receber o envio de horário de funcionamento
 const char* mqtt_user = "EspServer"; // Usuário MQTT criado no Broker
 const char* mqtt_pass = "Esp123456";
-
-//chave email: ekqw aeic reax hrhi
 
 // --- Outras configurações ---
 const int camId = 1;
 unsigned long ms = 0;
 const unsigned long interval = 30000;
 unsigned long seq = 0;
+String horario_inicio = "00:00";
+String horario_fim = "00:00";
 
 // --- Configurações NTP ---
 const char* ntpServer = "a.ntp.br";       // Servidor NTP para sincronização de tempo
@@ -100,16 +101,30 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Payload recebido: ");
   Serial.println(msg);
 
-  StaticJsonDocument<100> doc;
-  DeserializationError error = deserializeJson(doc, msg);
-  if (error) {
-    Serial.print("Erro ao fazer parsing do JSON: ");
-    Serial.println(error.c_str());
-    return;
-  }
+  if (String(topic) == mqtt_topic_listener_horario) {
+    int idxIni = msg.indexOf("Ini: ");
+    int idxFim = msg.indexOf("Fim: ");
 
-  if (doc.containsKey("discovery") && doc["discovery"] == "cameras") {
-    publishIP();
+    if (idxIni != -1 && idxFim != -1) {
+      horario_inicio = msg.substring(idxIni + 5, idxIni + 10);
+      horario_fim = msg.substring(idxFim + 5, idxFim + 10);
+
+      Serial.println("Horário recebido:");
+      Serial.println("Início: " + horario_inicio);
+      Serial.println("Fim: " + horario_fim);
+    }
+  } else {
+    StaticJsonDocument<100> doc;
+    DeserializationError error = deserializeJson(doc, msg);
+    if (error) {
+      Serial.print("Erro ao fazer parsing do JSON: ");
+      Serial.println(error.c_str());
+      return;
+    }
+
+    if (doc.containsKey("discovery") && doc["discovery"] == "cameras") {
+      publishIP();
+    }
   }
 }
 
@@ -223,7 +238,9 @@ void setup() {
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);  
   client.subscribe("comandos/init");
+  client.subscribe("comandos/horario");
   Serial.println("Inscrito em comandos/init");
+  Serial.println("Inscrito em comandos/horario");
 
   startCameraServer();
 
@@ -239,13 +256,39 @@ void reconnect() {
     if (client.connect(mqtt_client_id, mqtt_user, mqtt_pass)) {
       Serial.println("conectado!");
       client.subscribe("comandos/init");
+      client.subscribe("comandos/horario");
       Serial.println("Inscrito em comandos/init");
+      Serial.println("Inscrito em comandos/horario");
     } else {
       Serial.print("falhou, rc=");
       Serial.print(client.state());
       Serial.println(" tentando novamente em 5 segundos");
       delay(5000);
     }
+  }
+}
+
+bool dentroIntervaloHora(String inicio, String fim) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Erro ao obter hora local.");
+    return false;
+  }
+
+  int horaAtual = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+
+  int h1 = inicio.substring(0, 2).toInt();
+  int m1 = inicio.substring(3, 5).toInt();
+  int h2 = fim.substring(0, 2).toInt();
+  int m2 = fim.substring(3, 5).toInt();
+
+  int inicioMin = h1 * 60 + m1;
+  int fimMin = h2 * 60 + m2;
+
+  if (inicioMin <= fimMin) {
+    return horaAtual >= inicioMin && horaAtual <= fimMin;
+  } else {
+    return horaAtual >= inicioMin || horaAtual <= fimMin;
   }
 }
 
@@ -327,4 +370,11 @@ void loop() {
     reconnect();
   }
   client.loop();
+
+  if (dentroIntervaloHora(horario_inicio, horario_fim)) {
+    if (millis() - ms > interval) {
+      ms = millis();
+      sendImage();
+    }
+  }
 }
